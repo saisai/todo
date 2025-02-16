@@ -10,7 +10,7 @@ const todoSchema = z.object({
 
 export default function TodoList() {
     const dispatch = useDispatch()
-    const todos = useSelector((state) => state.todos.todos)
+    const todos = useSelector((state) => state.todos.todos) || [];
     const [title, setTitle] = useState("")
     const [editId, setEditId] = useState(null);
     const [editTitle, setEditTitle] = useState("");

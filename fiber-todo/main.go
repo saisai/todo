@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"time"
+
+	"database/sql"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/jmoiron/sqlx"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
@@ -19,8 +23,19 @@ var redisClient *redis.Client
 var ctx = context.Background()
 
 func initDB() {
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// Retrieve the PostgreSQL connection URL from environment variables
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
 	var err error
-	db, err = sqlx.Connect("postgres", "postgres://postgres:postgres@192.168.2.39:5432/todo_db?sslmode=disable")
+	db, err = sqlx.Connect("postgres", databaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -74,6 +89,22 @@ func createTodo(c *fiber.Ctx) error {
 	log.Println("clear from cache in createTodo")
 	redisClient.Del(ctx, "todos")
 
+	// Query the last record
+
+	query := "SELECT * FROM todos ORDER BY id DESC LIMIT 1"
+	row := db.QueryRow(query)
+
+	// Scan result into the Todo struct
+	err = row.Scan(&todo.ID, &todo.Title, &todo.Completed)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Println("No rows returned")
+		} else {
+			log.Fatal(err)
+		}
+	}
+
+	print("hello ", todo)
 	return c.JSON(todo)
 }
 
@@ -113,11 +144,21 @@ func deleteTodo(c *fiber.Ctx) error {
 func main() {
 	initDB()
 	app := fiber.New()
-	// app.Use(cors.New())
+
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// Retrieve the PostgreSQL connection URL from environment variables
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		log.Fatal("REDIS_URL is required")
+	}
 
 	// Connect to Redis
 	redisClient = redis.NewClient(&redis.Options{
-		Addr: "192.168.2.39:6379",
+		Addr: redisURL,
 	})
 	fmt.Println("✅ Connected to Redis")
 
@@ -131,6 +172,12 @@ func main() {
 	app.Put("/todos/:id", updateTodo)
 	app.Delete("/todos/:id", deleteTodo)
 
-	fmt.Println("Server running on http://localhost:3001")
-	log.Fatal(app.Listen(":3001"))
+	// Start the server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000" // Default port if not specified
+	}
+
+	fmt.Printf("Starting server on port %s...\n", port)
+	app.Listen(":" + port)
 }
